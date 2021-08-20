@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <numbers>
 using namespace threePointCalibration;
 using namespace std;
 namespace geo = boost::geometry;
@@ -103,18 +104,30 @@ void transformInPlace(Points_t<N> &points, const function<Point_t(const Point_t&
   ranges::transform(points, points.begin(), transformPoint);
 }
 
+template<size_t N>
+void transformInvInPlace(Points_t<N> &points, const Transformation &trans)
+{
+  ranges::transform(points, points.begin(), [&trans](const Point_t &p){ return trans.transformInv(p); });
+}
+
 class Test
 {
-  const RefPoints_t refPoints
+  const RefPoints_t _refPoints
   {{
+    // x: to the right
+    // y: height
+    // z: forward
     { -400, 100, 1000 },
     {  400, 100, 1000 },
     { -400, 900, 1000 }
   }};
 
-  using Cuboid_t = Points_t<8>;
-  const Cuboid_t cube
-  {{ // center 0, 500, 500; edge length 600
+protected:
+  RefPoints_t _refPointsT = _refPoints;
+
+  Points_t<8> _cubeT
+  {{
+    // cube: center 0, 500, 500; edge length 600
     { -300, 200, 200 },
     {  300, 200, 200 },
     { -300, 200, 800 },
@@ -124,9 +137,6 @@ class Test
     { -300, 800, 800 },
     {  300, 800, 800 }
   }};
-
-  RefPoints_t refPointsT = refPoints;
-  Cuboid_t cubeT = cube;
 
   void translateAll(Coordinate_t x, Coordinate_t y, Coordinate_t z)
   {
@@ -138,8 +148,8 @@ class Test
                                 geo::transform(gp, gpT, transl);
                                 return Point_t{ gpT.x(), gpT.y(), gpT.z() };
                               };
-    transformInPlace(refPointsT, geoTransform);
-    transformInPlace(cubeT, geoTransform);
+    transformInPlace(_refPointsT, geoTransform);
+    transformInPlace(_cubeT, geoTransform);
   }
 
   template<typename Map2d>
@@ -153,15 +163,17 @@ class Test
                                 geo::transform(gp, gpT, rot);
                                 return map2d.unmap(gpT) + rotPoint;
                               };
-    transformInPlace(refPointsT, geoTransform);
-    transformInPlace(cubeT, geoTransform);
+    transformInPlace(_refPointsT, geoTransform);
+    transformInPlace(_cubeT, geoTransform);
   }
 
-  void calcTransformedPoints()
+private:
+  // transform to camera coordinates
+  virtual void calcTransformedPoints()
   {
-    translateAll(0, -((refPoints[0].y() + refPoints[2].y()) / 2), 0);
+    translateAll(0, -((_refPoints[0].y() + _refPoints[2].y()) / 2), 0);
 
-    const Point_t rotPoint{ 0, 0, refPoints[0].z() };
+    const Point_t rotPoint{ 0, 0, _refPoints[0].z() };
     const Coordinate_t degreesX = 50;
     rotateAll(rotPoint, MapYZ(), degreesX);
 
@@ -174,28 +186,92 @@ class Test
     translateAll(-123.4, 345.6, -98.7);
   }
 
+  // transform to world coordinates
+  virtual void transformBack()
+  {
+    const Transformation trans(_refPoints, _refPointsT);
+    transformInPlace(_cubeT, trans);
+  }
+
 public:
   void test()
   {
     calcTransformedPoints();
 
     cout << "transformed reference points:" << endl;
-    cout << refPointsT << endl;
+    cout << _refPointsT << endl;
     cout << "transformed object points:" << endl;
-    cout << cubeT << endl;
+    cout << _cubeT << endl;
 
-    const Transformation trans(refPoints, refPointsT);
-    transformInPlace(cubeT, trans);
+    transformBack();
 
     cout << "back-transformed object points:" << endl;
-    cout << cubeT;
+    cout << _cubeT;
   }
-};
+}; // class Test
+
+class TestSimple : public Test
+{
+  const RefPoints_t _triangleOnTheFloor
+  {{
+    // x: to the right
+    // y: forward
+    // z: height
+    { -500, 1000, 0 },
+    {  500, 1000, 0 },
+    {  400,  100, 0 }
+  }};
+  const Point_t _objPoint = _cubeT.front();
+
+  void calcTransformedPoints() override
+  {
+    translateAll(0, 0, -1000);
+
+    const Point_t rotPoint{};
+    const Coordinate_t degreesX = -140;
+    rotateAll(rotPoint, MapYZ(), degreesX);
+
+    const Coordinate_t degreesY = 35;
+    rotateAll(rotPoint, MapXZ(), degreesY);
+
+    const Coordinate_t degreesZ = 20;
+    rotateAll(rotPoint, MapXY(), degreesZ);
+  }
+
+  void transformBack() override
+  {
+    // Use only three points in camera coordinates. They determine the xy plane
+    // in world coordinates. The position of the points within the plane is
+    // irrelevant, they just need to form a large triangle. The world coordinate
+    // origin is determined by the foot of the perpendicular from the camera to
+    // the xy plane.
+    const Transformation trans(_refPointsT);
+    transformInvInPlace(_cubeT, trans);
+
+    // The cube object has now been transformed into world coordinates. The
+    // z-coordinates of all points have their original value (see above).
+    // However, the xy values appear rotated. Because the direction of the
+    // y-axis within the xy-plane is determined by the viewing direction of
+    // the camera. We now correct this rotation. The angle is determined using
+    // the first object point.
+    const Point_t objPointT = _cubeT.front();
+    const Coordinate_t angle = (atan2(objPointT.y(), objPointT.x()) - atan2(_objPoint.y(), _objPoint.x())) * 180 / numbers::pi;
+    rotateAll(Point_t{}, MapXY(), -angle);
+  }
+
+public:
+  TestSimple()
+  {
+    _refPointsT = _triangleOnTheFloor;
+  }
+}; // class TestSimple
 
 int main()
 {
-  Test t;
-  t.test();
+  Test().test();
+
+  cout << endl << "---simplified calibration with triangle on the floor---" << endl;
+  TestSimple().test();
 
   return 0;
 }

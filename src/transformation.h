@@ -46,18 +46,19 @@ using RefPoints_t = Points_t<3>;
 class Transformation
 {
 public:
+  Transformation(const RefPoints_t &triangleInPlane);
   Transformation(const RefPoints_t &refPts, const RefPoints_t &refPtsT);
   Vec_t transform(const Vec_t &x) const;
+  Vec_t transformInv(const Vec_t &x) const;
   Point_t operator()(const Point_t &p) const;
 
 private:
-  Transformation(const Vec_t &origin, const Vec_t &baseX, const Vec_t &baseY);
   Transformation(const Vec_t &origin, const RefPoints_t &refPts, const RefPoints_t &refPtsT);
+  Transformation(const Vec_t &origin, const Vec_t &baseX, const Vec_t &baseY);
   static Vec_t calcOrigin(const RefPoints_t &refPts, const RefPoints_t &refPtsT);
-  Vec_t transformInv(const Vec_t &x) const;
 
-  Mat_t a;
-  Vec_t b;
+  Mat_t _a, _aInv;
+  Vec_t _b;
 };
 
 } /* namespace threePointCalibration */
