@@ -29,44 +29,79 @@ namespace threePointCalibration
 {
 
 typedef double Coordinate_t;
-typedef boost::qvm::vec<Coordinate_t, 3> Vec_t;
-typedef boost::qvm::mat<Coordinate_t, 3, 3> Mat_t;
 
-struct Point_t : Vec_t
+template<std::size_t ndims>
+using Vector_ = boost::qvm::vec<Coordinate_t, ndims>;
+
+template<std::size_t ndims>
+using Matrix_ = boost::qvm::mat<Coordinate_t, ndims, ndims>;
+
+template<std::size_t ndims>
+struct Point_;
+
+template<>
+struct Point_<2> : Vector_<2>
+{
+  const Coordinate_t &x() const { return a[0]; }
+  const Coordinate_t &y() const { return a[1]; }
+};
+
+template<>
+struct Point_<3> : Vector_<3>
 {
   const Coordinate_t &x() const { return a[0]; }
   const Coordinate_t &y() const { return a[1]; }
   const Coordinate_t &z() const { return a[2]; }
 };
 
-template<std::size_t N>
-using Points_t = std::array<Point_t, N>;
-using RefPoints_t = Points_t<3>;
+template<std::size_t ndims, std::size_t npoints>
+using Points_ = std::array<Point_<ndims>, npoints>;
 
-class Transformation
+template<std::size_t ndims>
+using ReferencePoints_ = Points_<ndims, ndims>;
+
+template<std::size_t ndims>
+class Transformation_
 {
 public:
-  Transformation(const RefPoints_t &triangleInPlane);
-  Transformation(const RefPoints_t &refPts, const RefPoints_t &refPtsT);
-  Vec_t transform(const Vec_t &x) const;
-  Vec_t transformInv(const Vec_t &x) const;
-  Point_t operator()(const Point_t &p) const;
+  using Vec = Vector_<ndims>;
+  using Mat = Matrix_<ndims>;
+  using RefPoints = ReferencePoints_<ndims>;
+
+  Transformation_(const RefPoints &rp, const RefPoints &rpMapping);
+  Transformation_(const RefPoints &triangleInPlane);
+
+  Vec transform(const Vec &x) const
+  {
+    return _a * x + _b;
+  }
+
+  Vec transformInv(const Vec &x) const
+  {
+    return _aInv * (x - _b);
+  }
+
+  Point_<ndims> operator()(const Point_<ndims> &p) const
+  {
+    return transform(p);
+  }
 
 private:
-  Transformation(const Vec_t &origin, const RefPoints_t &refPts, const RefPoints_t &refPtsT);
-  Transformation(const Vec_t &origin, const Vec_t &baseX, const Vec_t &baseY);
-  static Vec_t calcOrigin(const RefPoints_t &refPts, const RefPoints_t &refPtsT);
-
-  Mat_t _a, _aInv;
-  Vec_t _b;
+  Mat _a, _aInv;
+  Vec _b;
 };
+
+using Point = Point_<3>;
+using Point2 = Point_<2>;
+using Transformation = Transformation_<3>;
+using Transformation2D = Transformation_<2>;
 
 } /* namespace threePointCalibration */
 
 namespace boost { namespace qvm
 {
-  template<>
-  struct vec_traits<threePointCalibration::Point_t> : vec_traits<threePointCalibration::Vec_t>
+  template<std::size_t ndims>
+  struct vec_traits<threePointCalibration::Point_<ndims>> : vec_traits<threePointCalibration::Vector_<ndims>>
   {
   };
 }}

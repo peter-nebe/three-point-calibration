@@ -44,12 +44,12 @@ protected:
 
 struct MapXY : Map2d
 {
-  Geo2dPnt_t map(const Point_t &p)
+  Geo2dPnt_t map(const Point &p)
   {
     unmapped = p.z();
     return { p.x(), p.y() };
   }
-  Point_t unmap(const Geo2dPnt_t &p)
+  Point unmap(const Geo2dPnt_t &p)
   {
     return { p.x(), p.y(), unmapped };
   }
@@ -57,12 +57,12 @@ struct MapXY : Map2d
 
 struct MapXZ : Map2d
 {
-  Geo2dPnt_t map(const Point_t &p)
+  Geo2dPnt_t map(const Point &p)
   {
     unmapped = p.y();
     return { p.x(), p.z() };
   }
-  Point_t unmap(const Geo2dPnt_t &p)
+  Point unmap(const Geo2dPnt_t &p)
   {
     return { p.x(), unmapped, p.y() };
   }
@@ -70,18 +70,18 @@ struct MapXZ : Map2d
 
 struct MapYZ : Map2d
 {
-  Geo2dPnt_t map(const Point_t &p)
+  Geo2dPnt_t map(const Point &p)
   {
     unmapped = p.x();
     return { p.z(), p.y() };
   }
-  Point_t unmap(const Geo2dPnt_t &p)
+  Point unmap(const Geo2dPnt_t &p)
   {
     return { unmapped, p.y(), p.x() };
   }
 };
 
-ostream &operator<<(ostream &os, const Point_t &p)
+ostream &operator<<(ostream &os, const Point &p)
 {
   os << fixed << setprecision(3)
      << setw(8) << p.x() << ", "
@@ -90,29 +90,26 @@ ostream &operator<<(ostream &os, const Point_t &p)
   return os;
 }
 
-template<size_t N>
-ostream &operator<<(ostream &os, const Points_t<N> &points)
+template<size_t npoints>
+ostream &operator<<(ostream &os, const Points_<3, npoints> &points)
 {
-  for(const Point_t &pnt : points)
+  for(const Point &pnt : points)
     os << pnt << endl;
   return os;
 }
 
-template<size_t N>
-void transformInPlace(Points_t<N> &points, const function<Point_t(const Point_t&)> &transformPoint)
+template<size_t npoints>
+void transformInPlace(Points_<3, npoints> &points, const function<Point(const Point&)> &transformPoint)
 {
   ranges::transform(points, points.begin(), transformPoint);
 }
 
-template<size_t N>
-void transformInvInPlace(Points_t<N> &points, const Transformation &trans)
-{
-  ranges::transform(points, points.begin(), [&trans](const Point_t &p){ return trans.transformInv(p); });
-}
-
 class Test
 {
-  const RefPoints_t _refPoints
+protected:
+  using RefPoints = ReferencePoints_<3>;
+
+  const RefPoints _refPoints
   {{
     // x: to the right
     // y: height
@@ -122,10 +119,9 @@ class Test
     { -400, 900, 1000 }
   }};
 
-protected:
-  RefPoints_t _refPointsT = _refPoints;
+  RefPoints _refPointsMapping = _refPoints;
 
-  Points_t<8> _cubeT
+  Points_<3, 8> _cube
   {{
     // cube: center 0, 500, 500; edge length 600
     { -300, 200, 200 },
@@ -138,42 +134,42 @@ protected:
     {  300, 800, 800 }
   }};
 
-  void translateAll(Coordinate_t x, Coordinate_t y, Coordinate_t z)
+  void translateAll(Coordinate_t x, Coordinate_t y, Coordinate_t z = 0)
   {
     const geo::strategy::transform::translate_transformer<Coordinate_t, 3, 3> transl(x, y, z);
-    const auto geoTransform = [&transl](const Point_t &point)
+    const auto geoTransform = [&transl](const Point &point)
                               {
                                 const GeoPnt_t gp(point.x(), point.y(), point.z());
                                 GeoPnt_t gpT;
                                 geo::transform(gp, gpT, transl);
-                                return Point_t{ gpT.x(), gpT.y(), gpT.z() };
+                                return Point{ gpT.x(), gpT.y(), gpT.z() };
                               };
-    transformInPlace(_refPointsT, geoTransform);
-    transformInPlace(_cubeT, geoTransform);
+    transformInPlace(_refPointsMapping, geoTransform);
+    transformInPlace(_cube, geoTransform);
   }
 
   template<typename Map2d>
-  void rotateAll(const Point_t &rotPoint, Map2d map2d, Coordinate_t degrees)
+  void rotateAll(const Point &rotPoint, Map2d map2d, Coordinate_t degrees)
   {
     const geo::strategy::transform::rotate_transformer<geo::degree, Coordinate_t, 2, 2> rot(-degrees);
-    const auto geoTransform = [&](const Point_t &point)
+    const auto geoTransform = [&](const Point &point)
                               {
                                 const Geo2dPnt_t gp = map2d.map(point - rotPoint);
                                 Geo2dPnt_t gpT;
                                 geo::transform(gp, gpT, rot);
                                 return map2d.unmap(gpT) + rotPoint;
                               };
-    transformInPlace(_refPointsT, geoTransform);
-    transformInPlace(_cubeT, geoTransform);
+    transformInPlace(_refPointsMapping, geoTransform);
+    transformInPlace(_cube, geoTransform);
   }
 
 private:
-  // transform to camera coordinates
-  virtual void calcTransformedPoints()
+  // transform into camera coordinates
+  virtual void calcMappedPoints()
   {
     translateAll(0, -((_refPoints[0].y() + _refPoints[2].y()) / 2), 0);
 
-    const Point_t rotPoint{ 0, 0, _refPoints[0].z() };
+    const Point rotPoint{ 0, 0, _refPoints[0].z() };
     const Coordinate_t degreesX = 50;
     rotateAll(rotPoint, MapYZ(), degreesX);
 
@@ -186,33 +182,33 @@ private:
     translateAll(-123.4, 345.6, -98.7);
   }
 
-  // transform to world coordinates
-  virtual void transformBack()
+  // transform into world coordinates
+  virtual void transformToWorld()
   {
-    const Transformation trans(_refPoints, _refPointsT);
-    transformInPlace(_cubeT, trans);
+    const Transformation trans(_refPoints, _refPointsMapping);
+    transformInPlace(_cube, trans);
   }
 
 public:
   void test()
   {
-    calcTransformedPoints();
+    calcMappedPoints();
 
-    cout << "transformed reference points:" << endl;
-    cout << _refPointsT << endl;
-    cout << "transformed object points:" << endl;
-    cout << _cubeT << endl;
+    cout << "mapping of the reference points:" << endl;
+    cout << _refPointsMapping << endl;
+    cout << "mapping of the object points:" << endl;
+    cout << _cube << endl;
 
-    transformBack();
+    transformToWorld();
 
-    cout << "back-transformed object points:" << endl;
-    cout << _cubeT;
+    cout << "object points transformed into world coordinates:" << endl;
+    cout << _cube;
   }
 }; // class Test
 
 class TestSimple : public Test
 {
-  const RefPoints_t _triangleOnTheFloor
+  const RefPoints _triangleOnTheFloor
   {{
     // x: to the right
     // y: forward
@@ -221,13 +217,13 @@ class TestSimple : public Test
     {  500, 1000, 0 },
     {  400,  100, 0 }
   }};
-  const Point_t _objPoint = _cubeT.front();
+  const Point _objPoint = _cube.front();
 
-  void calcTransformedPoints() override
+  void calcMappedPoints() override
   {
     translateAll(0, 0, -1000);
 
-    const Point_t rotPoint{};
+    const Point rotPoint{};
     const Coordinate_t degreesX = -140;
     rotateAll(rotPoint, MapYZ(), degreesX);
 
@@ -238,15 +234,15 @@ class TestSimple : public Test
     rotateAll(rotPoint, MapXY(), degreesZ);
   }
 
-  void transformBack() override
+  void transformToWorld() override
   {
     // Use only three points in camera coordinates. They determine the xy plane
     // in world coordinates. The position of the points within the plane is
     // irrelevant, they just need to form a large triangle. The world coordinate
     // origin is determined by the foot of the perpendicular from the camera to
     // the xy plane.
-    const Transformation trans(_refPointsT);
-    transformInvInPlace(_cubeT, trans);
+    const Transformation trans(_refPointsMapping);
+    transformInPlace(_cube, trans);
 
     // The cube object has now been transformed into world coordinates. The
     // z-coordinates of all points have their original value (see above).
@@ -254,24 +250,69 @@ class TestSimple : public Test
     // y-axis within the xy-plane is determined by the viewing direction of
     // the camera. We now correct this rotation. The angle is determined using
     // the first object point.
-    const Point_t objPointT = _cubeT.front();
-    const Coordinate_t angle = (atan2(objPointT.y(), objPointT.x()) - atan2(_objPoint.y(), _objPoint.x())) * 180 / numbers::pi;
-    rotateAll(Point_t{}, MapXY(), -angle);
+    const Point objPointMapping = _cube.front();
+    auto atan = [](const Point &p){ return std::atan2(p.y(), p.x()); };
+    const Coordinate_t angle = (atan(objPointMapping) - atan(_objPoint)) * 180 / numbers::pi;
+    rotateAll(Point{}, MapXY(), -angle);
   }
 
 public:
   TestSimple()
   {
-    _refPointsT = _triangleOnTheFloor;
+    _refPointsMapping = _triangleOnTheFloor;
   }
 }; // class TestSimple
+
+class Test2D : public Test
+{
+  const RefPoints _refPoints
+  {{
+    { -500, 1000 },
+    {  500, 1000 }
+  }};
+
+  void calcMappedPoints() override
+  {
+    translateAll(700, -800);
+
+    const Point rotPoint{};
+    const Coordinate_t degreesZ = 50;
+    rotateAll(rotPoint, MapXY(), degreesZ);
+
+    translateAll(-123, 45);
+  }
+
+  void transformToWorld() override
+  {
+    struct P2 : Point_<2>
+    {
+      P2(const Point_<3> &p) : Point_<2>{ p.x(), p.y() } {}
+    };
+    struct P3 : Point_<3>
+    {
+      P3(const Point_<2> &p, Coordinate_t z) : Point_<3>{ p.x(), p.y(), z } {}
+    };
+    const Transformation2D trans({ P2(_refPoints[0]), P2(_refPoints[1]) },
+                                 { P2(_refPointsMapping[0]), P2(_refPointsMapping[1]) });
+    transformInPlace(_cube, [&trans](const Point &p){ return P3(trans(P2(p)), p.z()); });
+  }
+
+public:
+  Test2D()
+  {
+    _refPointsMapping = _refPoints;
+  }
+}; // class Test2D
 
 int main()
 {
   Test().test();
 
-  cout << endl << "---simplified calibration with triangle on the floor---" << endl;
+  cout << endl << "---simplified calibration with three points on the floor---" << endl;
   TestSimple().test();
+
+  cout << endl << "---2D calibration with two points---" << endl;
+  Test2D().test();
 
   return 0;
 }
