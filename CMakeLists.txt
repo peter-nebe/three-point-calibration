@@ -2,8 +2,8 @@ cmake_minimum_required (VERSION 3.17)
 project (three-point-calibration)
 
 set (project_SRC
-  src/transformation.cpp
-  src/test.cpp
+  transformation.cpp
+  test.cpp
 )
 set (CMAKE_CXX_STANDARD
   20

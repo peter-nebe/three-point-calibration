@@ -19,13 +19,12 @@
  */
 
 #include "transformation.h"
-#include "boost/qvm/vec_operations.hpp"
 #include "boost/qvm/vec_mat_operations.hpp"
 #include "boost/qvm/mat_operations.hpp"
 #include "boost/qvm/map_mat_vec.hpp"
 #include "boost/qvm/map_mat_mat.hpp"
 #include <tuple>
-namespace qvm = boost::qvm;
+using namespace boost::qvm;
 
 namespace threePointCalibration
 {
@@ -46,30 +45,30 @@ almost_equal(T x, T y, int ulp = 2)
       || abs < std::numeric_limits<T>::min();
 }
 
-template<typename VecTp>
-bool isMagOne(const VecTp &v)
+template<int Dim>
+bool isMagOne(const Vector_<Dim> &v)
 {
-  return almost_equal(qvm::mag(v), 1.0);
+  return almost_equal(mag(v), 1.0);
 }
 
-template<typename VecTp>
-bool isDotZero(const VecTp &a, const VecTp &b)
+template<int Dim>
+bool isDotZero(const Vector_<Dim> &a, const Vector_<Dim> &b)
 {
-  return std::fabs(qvm::dot(a, b)) < 1e-15;
+  return std::fabs(dot(a, b)) < 1e-15;
 }
 
-template<typename MatTp>
-bool isDetOne(const MatTp &m)
+template<int Dim>
+bool isDetOne(const Matrix_<Dim> &m)
 {
-  return almost_equal(qvm::determinant(m), 1.0);
+  return almost_equal(determinant(m), 1.0);
 }
 
 Matrix_<2> makeRotation(const ReferencePoints_<2> &rp, const ReferencePoints_<2> &rpMapping)
 {
   auto normalizedVector = [](const ReferencePoints_<2> &rp)
                           {
-                            const Vector_<2> v = qvm::normalized(rp[1] - rp[0]);
-                            return std::make_tuple(v.a[0], v.a[1]);
+                            const Vector_<2> v = normalized(rp[1] - rp[0]);
+                            return std::make_tuple(v.x, v.y);
                           };
 
   const auto [dx, dy] = normalizedVector(rp);
@@ -84,8 +83,8 @@ Matrix_<2> makeRotation(const ReferencePoints_<2> &rp, const ReferencePoints_<2>
   assert(isDotZero(xBase, yBase));
 
   Matrix_<2> rot;
-  qvm::col<0>(rot) = xBase;
-  qvm::col<1>(rot) = yBase;
+  col<0>(rot) = xBase;
+  col<1>(rot) = yBase;
   assert(isDetOne(rot));
 
   return rot;
@@ -100,7 +99,7 @@ Transformation_<2>::Transformation_(const RefPoints &rp, const RefPoints &rpMapp
   _a = makeRotation(rp, rpMapping);
 
   // rotation matrix: inverse = transpose
-  _aInv = qvm::transposed(_a);
+  _aInv = transposed(_a);
   assert(isDetOne(_aInv));
 
   // set translation vector
@@ -116,7 +115,7 @@ Transformation_<3>::Transformation_(const RefPoints &triangleInPlane)
   const Vec u = triangleInPlane[1] - p;
   const Vec v = triangleInPlane[2] - p;
 
-  const Vec n0 = qvm::normalized(qvm::cross(u, v));
+  const Vec n0 = normalized(cross(u, v));
   assert(isMagOne(n0));
   const Vec zBase = -n0;
 
@@ -127,10 +126,10 @@ Transformation_<3>::Transformation_(const RefPoints &triangleInPlane)
   // yby zby + zbz = 0
   // yby zby = -zbz
   // yby = -zbz / zby
-  const Coordinate_t yby = -zBase.a[2] / zBase.a[1];
+  const Coordinate_t yby = -zBase.z / zBase.y;
 
-  const Vec yBase = qvm::normalized(Vec{ ybx, yby, ybz });
-  const Vec xBase = qvm::cross(yBase, zBase);
+  const Vec yBase = normalized(Vec{ ybx, yby, ybz });
+  const Vec xBase = cross(yBase, zBase);
   assert(isMagOne(xBase));
   assert(isMagOne(yBase));
   assert(isMagOne(zBase));
@@ -139,19 +138,19 @@ Transformation_<3>::Transformation_(const RefPoints &triangleInPlane)
   assert(isDotZero(zBase, xBase));
 
   Mat rot;
-  qvm::col<0>(rot) = xBase;
-  qvm::col<1>(rot) = yBase;
-  qvm::col<2>(rot) = zBase;
+  col<0>(rot) = xBase;
+  col<1>(rot) = yBase;
+  col<2>(rot) = zBase;
 
   // set inverse rotation matrix
   _aInv = rot;
 
   // rotation matrix: inverse = transpose
-  _a = qvm::transposed(_aInv);
+  _a = transposed(_aInv);
   assert(isDetOne(_a));
   assert(isDetOne(_aInv));
 
-  const Coordinate_t distFromOrigin = qvm::dot(p, n0);
+  const Coordinate_t distFromOrigin = dot(p, n0);
   assert(distFromOrigin > 0);
 
   // set translation vector
@@ -168,17 +167,17 @@ Transformation_<3>::Transformation_(const RefPoints &rp, const RefPoints &rpMapp
                                     const Vec v = threePoints[2] - p;
 
                                     Mat m;
-                                    qvm::col<0>(m) = u;
-                                    qvm::col<1>(m) = v;
-                                    qvm::col<2>(m) = qvm::cross(u, v);
+                                    col<0>(m) = u;
+                                    col<1>(m) = v;
+                                    col<2>(m) = cross(u, v);
 
                                     return m;
                                   };
   const Mat m = makeLinearTransformation(rp);
   const Mat mm = makeLinearTransformation(rpMapping);
 
-  _a = m * qvm::inverse(mm);
-  _aInv = qvm::inverse(_a);
+  _a = m * inverse(mm);
+  _aInv = inverse(_a);
 
   // set translation vector
   _b = rp.front() - _a * rpMapping.front();
